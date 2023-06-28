@@ -10,36 +10,33 @@
 ## Prerequisites
 
 Before using this tool, you need to ensure that:
-
 - The internal network node is configured to connect to the internet via NAT, with no changes to the source port.
-- All internal network nodes are set to use the same internal network node as a gateway.
-- The gateway node has a public IP.
+- The internal network nodes are set to use the same internal network node as a gateway which has a public IP.
 
 ## Usage
 
 Here's how to use `DockerSwarmOverlay-on-NAT`:
 
 1. Clone the repository:
-```shell
+```bash
 git clone https://github.com/loongel/DockerSwarmOverlay-on-NAT.git
+
 ```
 
 2. Navigate to the cloned repository. Copy the `config.yml.template` file to create a `config.yml` file for setting your cluster configuration.
-```shell
+Customize the `config.yml` as needed.
+```bash
 cd DockerSwarmOverlay-on-NAT
 cp config.yml.template config.yml
 nano config.yml
-```
 
-Customize the `config.yml` as needed. 
+```
 
 3. Execute the tool using the following command:
-
-```shell
+```bash
 sudo bash run.sh
+
 ```
-
-
 
 ## Issues and Support
 
