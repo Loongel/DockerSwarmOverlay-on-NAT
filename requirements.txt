@@ -1,2 +1,4 @@
 pandas
 chardet
+setuptools
+pyyaml

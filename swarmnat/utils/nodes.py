@@ -187,7 +187,7 @@ class Nodes:
         if len(localnode) > 0:
             return localnode[0]
         else:
-            raise Exception("Local node not found.")
+            raise Exception("Local node not found. It is recommended to check your config.yml file, whether the current node information exists in the configuration file.")
         
 
 

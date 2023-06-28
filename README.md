@@ -12,6 +12,7 @@
 Before using this tool, you need to ensure that:
 - The internal network node is configured to connect to the internet via NAT, with no changes to the source port.
 - The internal network nodes are set to use the same internal network node as a gateway which has a public IP.
+- Python and pip have been installed on each node
 
 ## Usage
 
@@ -37,6 +38,21 @@ nano config.yml
 sudo bash run.sh
 
 ```
+If you encounter the following error during execution, 
+```bash
+    import pkg_resources
+ImportError: No module named pkg_resources
+Installing missing packages...
+run.sh: line 6: pip: command not found
+
+```
+This is because there is no python or pip in the `PATH` of `sudo`, you can use the following script to execute.
+```bash
+sudo bash -c "export PATH=$PATH; bash run.sh"
+```
+
+4. Check the terminal output log. If there is no `CMD exec FAIL !!!!` information, it means the execution is successful. On the contrary, you need to find the reason according to the terminal output log.
+
 
 ## Issues and Support
 

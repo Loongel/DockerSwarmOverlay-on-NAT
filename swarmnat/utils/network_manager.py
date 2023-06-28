@@ -68,8 +68,10 @@ class NetworkManager:
             cmd_body += f"-d {match_dst_ip} "
         if match_dst_port:
             cmd_body += f"--dport {match_dst_port} "
+        if nat_mode:
+            cmd_body += f"-j {nat_mode.upper()} --to "
         if to_ip:
-            cmd_body += f"-j {nat_mode.upper()} --to {to_ip}"
+            cmd_body += f"{to_ip}"  
         if to_port:
             cmd_body += f":{to_port}"
         # 构造完整命令
