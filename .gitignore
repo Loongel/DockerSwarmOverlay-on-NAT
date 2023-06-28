@@ -164,4 +164,4 @@ config.json
 config.yml
 
 #temp file
-iptables-backup.txt
+iptables-backup.*
