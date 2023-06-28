@@ -53,6 +53,11 @@ sudo bash -c "export PATH=$PATH; bash run.sh"
 
 4. Check the terminal output log. If there is no `CMD exec FAIL !!!!` information, it means the execution is successful. On the contrary, you need to find the reason according to the terminal output log.
 
+5. restore the iptables rules
+```bash
+sudo iptables-restore iptables-backup.txt 
+
+```
 
 ## Issues and Support
 

@@ -3,6 +3,7 @@ import subprocess
 from pandas import DataFrame as df
 import pandas as pd
 from enum import Enum
+import os
 
 from swarmnat.utils.nodes import Nodes, Node, NetworkType
 
@@ -18,7 +19,7 @@ class NetworkManager:
         self.chain_tasks = df()
 
     @staticmethod
-    def _add_nat_rule(deduplicate=True, insert_mode="A", nat_mode="dnat", chain="OUTPUT", protocol="all", \
+    def _add_nat_rule(deduplicate=True, insert_mode="I", nat_mode="dnat", chain="OUTPUT", protocol="all", \
         match_src_ip=None, match_src_port=None, match_dst_ip=None, match_dst_port=None, to_ip=None, to_port=None):
         
         def command_executor(cmd, for_check=False):
@@ -116,8 +117,16 @@ class NetworkManager:
         
     @staticmethod
     def backup_iptables_rules():
-         # backup iptables rules
-        NetworkManager.command_executor("iptables-save > iptables-backup.txt")       
+        # Check if backup file already exists
+        backup_file = "iptables-backup.txt"
+        if os.path.exists(backup_file):
+            # If backup file exists, add sequence number to file name
+            i = 0
+            while os.path.exists(f"{backup_file}.{i}"):
+                i += 1
+            backup_file = f"{backup_file}.{i}"
+        # Backup iptables rules
+        NetworkManager.command_executor(f"iptables-save > {backup_file}")    
     
     def is_same_area_network(self, node2:Node, node1:Node) -> bool:
         """
@@ -206,6 +215,9 @@ class NetworkManager:
             Returns:
             - None
             """
+            #将chain_tasks dataframe 倒序，以便后续遍历执行从末尾开始（优先处理double relay 然后 single 最后 none relay）
+            #chain_tasks = chain_tasks.iloc[::-1]
+            
             tasks =[]
               
             if debug:  
