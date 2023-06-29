@@ -9,7 +9,7 @@ def main():
     
     conf = read_config_file('config.yml')
     if conf is None:
-        print("Invalid config file")
+        print("Invalid config file, please check the config.yml file and the terminal output")
         return
     
     nodes = Nodes(
@@ -17,7 +17,7 @@ def main():
         nodes = conf.nodes,
         nat_nodes_relays = conf.nat_nodes_relays
     )
-    network_manager = NetworkManager(nodes)
+    network_manager = NetworkManager(nodes, conf.ingress_port)
 
     # 根据通讯链路查找本机节点的nat任务，并执行
     network_manager.handle_on_chains()

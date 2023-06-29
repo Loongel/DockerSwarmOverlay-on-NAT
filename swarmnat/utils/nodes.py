@@ -6,10 +6,10 @@ class NatNodesRelays:
     
     #静态方法，用于生成连接列表及连接号（relay port）
     @staticmethod
-    def _generate_connection_lists(nats):
+    def _generate_connection_lists(nats, ingress_port:int=4789):
         single_relay_list = {}
         double_relay_list = {}
-        connection_id = 4788
+        connection_id = ingress_port-1 
 
         # 第一个列表：包含第一列和第三列，第二列为 None
         for i in range(len(nats)):
@@ -73,13 +73,14 @@ class NatNodesRelays:
                 return nat["relay"] 
     
         
-    def __init__(self,nat_nodes_relays_list=None) -> None:
+    def __init__(self,nat_nodes_relays_list=None, ingress_port:int=4789) -> None:
         
         self.nat_nodes_relays_list = [] if nat_nodes_relays_list is None else nat_nodes_relays_list
 
         # 根据nat_nodes_relays_list获取到一个relays去重列表，一个nats去重列表[{"relay":"","nat":""}] 
         self.relays = list()
         self.nats = list()
+
         for nat_nodes_relay in self.nat_nodes_relays_list:
             self.relays.append(nat_nodes_relay["relay"])
             nats_tmp =[{"relay":nat_nodes_relay["relay"],"nat":nat} for nat in nat_nodes_relay["nat"]]
@@ -91,7 +92,7 @@ class NatNodesRelays:
         # 对nats列表去重
         self.nats = list(set([frozenset(nat.items()) for nat in self.nats]))
         self.nats = [dict(nat) for nat in self.nats]
-        self.single_relay_list, self.double_relay_list = self._generate_connection_lists(self.nats)
+        self.single_relay_list, self.double_relay_list = self._generate_connection_lists(self.nats, ingress_port)
       
 class NetworkType(Enum):
     TYPE_1 = "节点有独立公网IP，且公网IP就在接口上"

@@ -17,3 +17,6 @@ nodes:
 
 nat_nodes_relays:
   - {relay: pk01, nat: [pk02, pk03]}
+
+ingress_port:
+  - 13340

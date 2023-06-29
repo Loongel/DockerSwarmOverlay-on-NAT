@@ -8,7 +8,8 @@ import os
 from swarmnat.utils.nodes import Nodes, Node, NetworkType
 
 class NetworkManager:
-    def __init__(self, nodes:Nodes):
+    def __init__(self, nodes:Nodes , ingress_port:int=4789):
+        self.ingress_port = ingress_port
         self.nodes = nodes
         self.local_node = nodes.get_local_node()
         # 定义chain处理的任务列表dataframe的数据结构
@@ -64,7 +65,7 @@ class NetworkManager:
         cmd_body = f"{chain.upper()} "
         if protocol != "all" and protocol in ["tcp", "udp"]:
             cmd_body += f"-p {protocol} "
-        if mark:
+        if mark and task_type == "nat":
             cmd_body += f"-m mark --mark {mark} "
         if match_src_ip:
             cmd_body += f"-s {match_src_ip} "
@@ -318,7 +319,7 @@ class NetworkManager:
                     tasks1.append(
                         {'node': local_node, 'task': 
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': None, 
-                             'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': rem_ext_ip, 'to_port': None, 
+                             'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_ext_ip, 'to_port': None, 
                              'chain_type': 'OUTPUT'}})
 
                 # nat task 1.2 snat>normal1_local
@@ -326,7 +327,7 @@ class NetworkManager:
                     tasks1.append(
                         {'node': remote_node, 'task': 
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_ext_ip, 'src_port': None, 
-                             'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': loc_loc_ip, 'to_port': None, 
+                             'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_loc_ip, 'to_port': None, 
                              'chain_type': 'INPUT'}})
             
                 # chain_2: normal1 <- normal2:4789
@@ -336,7 +337,7 @@ class NetworkManager:
                 if remote_node.network_type != NetworkType.TYPE_1:
                     tasks2.append(
                         {'node': local_node, 'task': 
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_ext_ip, 'src_port': 4789, 
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_ext_ip, 'src_port': self.ingress_port, 
                              'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': None, 
                              'chain_type': 'INPUT'}})
 
@@ -344,7 +345,7 @@ class NetworkManager:
                 if local_node.network_type != NetworkType.TYPE_1:
                     tasks2.append(
                         {'node': remote_node, 'task': 
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': 4789, 
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port, 
                              'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_ext_ip, 'to_port': None, 
                              'chain_type': 'OUTPUT'}})
                              
@@ -354,7 +355,7 @@ class NetworkManager:
                 if remote_node.network_type != NetworkType.TYPE_1:
                     tasks3.append(
                         {'node': local_node, 'task': 
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': 4789, 
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port, 
                              'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': rem_ext_ip, 'to_port': None, 
                              'chain_type': 'OUTPUT'}})
 
@@ -362,7 +363,7 @@ class NetworkManager:
                 if local_node.network_type != NetworkType.TYPE_1:
                     tasks3.append(
                         {'node': remote_node, 'task': 
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_ext_ip, 'src_port': 4789, 
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_ext_ip, 'src_port': self.ingress_port, 
                              'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': None, 
                              'chain_type': 'INPUT'}})
                              
@@ -374,7 +375,7 @@ class NetworkManager:
                     tasks4.append(
                         {'node': local_node, 'task': 
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_ext_ip, 'src_port': None, 
-                             'dst_ip': loc_loc_ip, 'dst_port': 4789, 'to_ip': rem_loc_ip, 'to_port': None, 
+                             'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_loc_ip, 'to_port': None, 
                              'chain_type': 'INPUT'}})
 
                 # nat task 4.2 normal1_pub<dnat
@@ -382,7 +383,7 @@ class NetworkManager:
                     tasks4.append(
                         {'node': remote_node, 'task': 
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None, 
-                             'dst_ip': loc_loc_ip, 'dst_port': 4789, 'to_ip': loc_ext_ip, 'to_port': None, 
+                             'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_ext_ip, 'to_port': None, 
                              'chain_type': 'OUTPUT'}})
             
             # 将nat任务加入到chain_tasks中
@@ -428,14 +429,14 @@ class NetworkManager:
                     tasks1.append(
                         {'node': local_node, 'task':
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': None,
-                            'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': rem_rel_ext_ip, 'to_port': rem_rel_relay_port,
+                            'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_rel_ext_ip, 'to_port': rem_rel_relay_port,
                             'chain_type': 'OUTPUT'}})
 
                     # nat task 1.2 dnat > relayed:4789
                     tasks1.append(
                             {'node': rem_rel_node, 'task':
                                 {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_ext_ip, 'src_port': None,
-                                'dst_ip': rem_rel_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': 4789,
+                                'dst_ip': rem_rel_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
                                 'chain_type': 'PREROUTING'}})
                     
                     # nat task 1.3  (+snat>normal_local>) relayed:4789
@@ -443,7 +444,7 @@ class NetworkManager:
                         tasks1.append(
                             {'node': rem_rel_node, 'task':
                                 {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_ext_ip, 'src_port': None,
-                                'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': loc_loc_ip, 'to_port': None,
+                                'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_loc_ip, 'to_port': None,
                                 'chain_type': 'POSTROUTING'}})
 
                     # chain_2: normal <- behind relay:4789
@@ -454,7 +455,7 @@ class NetworkManager:
                     tasks2.append(
                         {'node': local_node, 'task':
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_rel_ext_ip, 'src_port': rem_rel_relay_port,
-                            'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': 4789,
+                            'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
                             'chain_type': 'INPUT'}})
                     
 
@@ -463,14 +464,14 @@ class NetworkManager:
                     if local_node.network_type != NetworkType.TYPE_1:
                         tasks2.append(
                             {'node': remote_node, 'task':
-                                {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': 4789,
+                                {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
                                 'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_ext_ip, 'to_port': None,
                                 'chain_type': 'OUTPUT'}})
                     
                     #  nat task 2.3 relay:relay_port < snat_on_POSTROUTING            
                     tasks2.append(
                         {'node': remote_node, 'task':
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': 4789,
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
                             'dst_ip': loc_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': rem_rel_relay_port,
                             'chain_type': 'POSTROUTING'}})
 
@@ -482,12 +483,12 @@ class NetworkManager:
                     # nat task 3.1 normal_socket:4789 > [snat>normal:relay_port + dnat>relay] -> relay
                     tasks3.append(
                         {'node': local_node, 'task':
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': 4789,
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
                             'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': rem_rel_ext_ip, 'to_port': None,
                             'chain_type': 'OUTPUT'}})
                     tasks3.append(
                         {'node': local_node, 'task':
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': 4789,
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
                             'dst_ip': rem_rel_ext_ip, 'dst_port': None, 'to_ip': None, 'to_port': rem_rel_relay_port,
                             'chain_type': 'POSTROUTING'}})
                     
@@ -500,7 +501,7 @@ class NetworkManager:
                     tasks3.append(
                         {'node': rem_rel_node, 'task':
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_ext_ip, 'src_port': rem_rel_relay_port,
-                            'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': 4789,
+                            'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': self.ingress_port,
                             'chain_type': 'POSTROUTING'}})
  
                     # chain_4:  normal:4789 <- behind relay 
@@ -510,7 +511,7 @@ class NetworkManager:
                     tasks4.append(
                         {'node': remote_node, 'task':
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
-                            'dst_ip': loc_loc_ip, 'dst_port': 4789, 'to_ip': loc_ext_ip, 'to_port': rem_rel_relay_port,
+                            'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_ext_ip, 'to_port': rem_rel_relay_port,
                             'chain_type': 'OUTPUT'}})
                     tasks4.append(
                         {'node': remote_node, 'task':
@@ -528,12 +529,12 @@ class NetworkManager:
                     tasks4.append(
                         {'node': local_node, 'task':
                             {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': rem_rel_ext_ip, 'src_port': None,
-                            'dst_ip': loc_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': None, 'to_port': 4789,
+                            'dst_ip': loc_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': None, 'to_port': self.ingress_port,
                             'chain_type': 'PREROUTING'}})
                     tasks4.append(
                         {'node': local_node, 'task':
                             {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': rem_rel_ext_ip, 'src_port': None,
-                            'dst_ip': loc_loc_ip, 'dst_port': 4789, 'to_ip': rem_loc_ip, 'to_port': None,
+                            'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_loc_ip, 'to_port': None,
                             'chain_type': 'INPUT'}})
                    
                     # 将nat任务加入到chain_tasks中 
@@ -582,13 +583,13 @@ class NetworkManager:
                 tasks1.append(
                     {'node': local_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': None,
-                        'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': rem_rel_ext_ip, 'to_port': rem_rel_relay_port,
+                        'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_rel_ext_ip, 'to_port': rem_rel_relay_port,
                         'chain_type': 'OUTPUT'}})
 
                 tasks1.append(
                     {'node': local_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': None,
-                        'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': loc_rel_loc_ip, 'to_port': None,
+                        'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_loc_ip, 'to_port': None,
                         'chain_type': 'POSTROUTING'}})
                 
                 # nat task 1.2 dnat > relayed:4789
@@ -601,13 +602,13 @@ class NetworkManager:
                 tasks1.append(
                     {'node': rem_rel_node, 'task':
                         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': loc_rel_ext_ip, 'src_port': None,
-                        'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': 4789,
+                        'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
                         'chain_type': 'PREROUTING'}})
         
                 tasks1.append(
                     {'node': rem_rel_node, 'task':
                         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': loc_rel_ext_ip, 'src_port': None,
-                        'dst_ip': rem_loc_ip, 'dst_port': 4789, 'to_ip': loc_loc_ip, 'to_port': None,
+                        'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_loc_ip, 'to_port': None,
                         'chain_type': 'POSTROUTING'}})
         
                 # chain_2: relayed1 <- relayed2:4789 
@@ -616,13 +617,13 @@ class NetworkManager:
                 # nat task 2.1 relay1 <- [ relay1<dnat + relay2:relay_port<snat_output] < relayed2:4789
                 tasks2.append(
                     {'node': remote_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': 4789,
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
                         'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_rel_ext_ip, 'to_port': None,
                         'chain_type': 'OUTPUT'}})
 
                 tasks2.append(
                     {'node': remote_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': 4789,
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
                         'dst_ip': loc_rel_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': loc_rel_relay_port,
                         'chain_type': 'POSTROUTING'}})
 
@@ -636,7 +637,7 @@ class NetworkManager:
                 tasks2.append(
                     {'node': loc_rel_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_rel_ext_ip, 'src_port': loc_rel_relay_port,
-                        'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': 4789,
+                        'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
                         'chain_type': 'POSTROUTING'}})
 
                 # chain_3: relayed1:4789 -> relayed2
@@ -645,13 +646,13 @@ class NetworkManager:
                 # nat task 3.1 [snat_output>relay1:relay_port + dnat_output>relay2] -> relay2
                 tasks3.append(
                     {'node': local_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': 4789,
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
                         'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': rem_rel_ext_ip, 'to_port': None,
                         'chain_type': 'OUTPUT'}})
 
                 tasks3.append(
                     {'node': local_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': 4789,
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
                         'dst_ip': rem_rel_ext_ip, 'dst_port': None, 'to_ip': loc_rel_loc_ip, 'to_port': loc_rel_relay_port,
                         'chain_type': 'POSTROUTING'}})
 
@@ -665,7 +666,7 @@ class NetworkManager:
                 tasks3.append(
                     {'node': rem_rel_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_rel_ext_ip, 'src_port': loc_rel_relay_port,
-                        'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': 4789,
+                        'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': self.ingress_port,
                         'chain_type': 'POSTROUTING'}})
 
                 # chain_4: relayed1:4789 <- relayed2 
@@ -675,7 +676,7 @@ class NetworkManager:
                 tasks4.append(
                     {'node': remote_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
-                        'dst_ip': loc_loc_ip, 'dst_port': 4789, 'to_ip': loc_rel_ext_ip, 'to_port': rem_rel_relay_port,
+                        'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_ext_ip, 'to_port': rem_rel_relay_port,
                         'chain_type': 'INPUT'}})
 
                 tasks4.append(
@@ -694,13 +695,13 @@ class NetworkManager:
                 tasks4.append(
                     {'node': loc_rel_node, 'task':
                         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': rem_rel_ext_ip, 'src_port': None,
-                        'dst_ip': loc_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': loc_loc_ip, 'to_port': 4789,
+                        'dst_ip': loc_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': loc_loc_ip, 'to_port': self.ingress_port,
                         'chain_type': 'OUTPUT'}})
 
                 tasks4.append(
                     {'node': loc_rel_node, 'task':
                         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': rem_rel_ext_ip, 'src_port': None,
-                        'dst_ip': loc_loc_ip, 'dst_port': 4789, 'to_ip': rem_loc_ip, 'to_port': None,
+                        'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_loc_ip, 'to_port': None,
                         'chain_type': 'POSTROUTING'}})
                 
             # 将nat任务加入到chain_tasks中         
