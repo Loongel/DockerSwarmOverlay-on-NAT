@@ -99,7 +99,7 @@ class NetworkType(Enum):
     TYPE_2 = "节点有独立公网IP，但是通过内网IP ip映射 nat 到公网IP上,内网中无其余待参与组网的节点"
     TYPE_3 = "节点有独立公网IP，但是通过内网IP ip映射 nat 到公网IP上，内网中有其余待参与组网的节点，网络情况同3"
     TYPE_4 = "节点有独立公网IP，但是通过内网IP ip映射 nat 到公网IP上，内网中有其余待参与组网的节点，网络情况同5"
-    TYPE_5 = "节点有无独立公网IP，但与d类型节点在同一内网中，可互通"
+    TYPE_5 = "节点无独立公网IP，但与d类型节点在同一内网中，可互通"
 
 class Node:
     def __init__(self, network_type=None, hostname=None, local_ip=None, external_ip=None, subnet_node_hostname=set([])):

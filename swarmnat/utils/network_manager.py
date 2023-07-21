@@ -389,10 +389,10 @@ class NetworkManager:
             # 将nat任务加入到chain_tasks中
             
             self.chain_tasks=pd.concat([self.chain_tasks, df([
-                {'chain': f'{local_node.hostname}:RANDOM -> {remote_node.hostname}:4789', 'chain_type': 'NO_RELAY', 'tasks': df(tasks1)},
-                {'chain': f'{remote_node.hostname}:4789 -> {local_node.hostname}:RANDOM', 'chain_type': 'NO_RELAY', 'tasks': df(tasks2)},
-                {'chain': f'{local_node.hostname}:4789 -> {remote_node.hostname}:RANDOM', 'chain_type': 'NO_RELAY', 'tasks': df(tasks3)},
-                {'chain': f'{remote_node.hostname}:RANDOM -> {local_node.hostname}:4789', 'chain_type': 'NO_RELAY', 'tasks': df(tasks4)}
+                {'chain': f'{local_node.hostname}:RANDOM -> {remote_node.hostname}:{self.ingress_port}', 'chain_type': 'NO_RELAY', 'tasks': df(tasks1)},
+                {'chain': f'{remote_node.hostname}:{self.ingress_port} -> {local_node.hostname}:RANDOM', 'chain_type': 'NO_RELAY', 'tasks': df(tasks2)},
+                {'chain': f'{local_node.hostname}:{self.ingress_port} -> {remote_node.hostname}:RANDOM', 'chain_type': 'NO_RELAY', 'tasks': df(tasks3)},
+                {'chain': f'{remote_node.hostname}:RANDOM -> {local_node.hostname}:{self.ingress_port}', 'chain_type': 'NO_RELAY', 'tasks': df(tasks4)}
             ])], ignore_index=True)
                               
         def handle_chain_single_relay(local_node:Node, remote_node:Node):
@@ -436,7 +436,7 @@ class NetworkManager:
                     tasks1.append(
                             {'node': rem_rel_node, 'task':
                                 {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_ext_ip, 'src_port': None,
-                                'dst_ip': rem_rel_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
+                                'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
                                 'chain_type': 'PREROUTING'}})
                     
                     # nat task 1.3  (+snat>normal_local>) relayed:4789
@@ -459,23 +459,58 @@ class NetworkManager:
                             'chain_type': 'INPUT'}})
                     
 
+                    # 不经过relay_node，直接从remote_node nat仿冒 relay_node
                     # nat task 2.2 relay:relay_port < snat_on_POSTROUTING (+normal_pub<dnat_output) relayed:4789
                     # normal_pub<dnat_output
-                    if local_node.network_type != NetworkType.TYPE_1:
-                        tasks2.append(
-                            {'node': remote_node, 'task':
-                                {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
-                                'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_ext_ip, 'to_port': None,
-                                'chain_type': 'OUTPUT'}})
                     
-                    #  nat task 2.3 relay:relay_port < snat_on_POSTROUTING            
+                    # if local_node.network_type != NetworkType.TYPE_1:
+                    #     tasks2.append(
+                    #         {'node': remote_node, 'task':
+                    #             {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                    #             'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_ext_ip, 'to_port': None,
+                    #             'chain_type': 'OUTPUT'}})
+                    
+                    # #  nat task 2.3 relay:relay_port < snat_on_POSTROUTING            
+                    # tasks2.append(
+                    #     {'node': remote_node, 'task':
+                    #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                    #         'dst_ip': loc_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': rem_rel_relay_port,
+                    #         'chain_type': 'POSTROUTING'}})
+                    
+                    # 经过relay_node,从remote_node nat到relay再nat到normal
+                    # nat task 2.2 relay < (rel_loc:rel_port<snat_post + rel_loc<dnat_output) < relayed:4789
                     tasks2.append(
                         {'node': remote_node, 'task':
-                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
-                            'dst_ip': loc_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': rem_rel_relay_port,
-                            'chain_type': 'POSTROUTING'}})
+                            {'task_type':'mark', 'mark':rem_rel_relay_port, 'nat_mode': None, 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                            'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': None, 'to_port': None,
+                            'chain_type': 'OUTPUT'}})
+                    
+                    tasks2.append(
+                            {'node': remote_node, 'task':
+                                {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                                'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': None,
+                                'chain_type': 'OUTPUT'}})
+ 
+                    tasks2.append(
+                            {'node': remote_node, 'task':
+                                {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                                'dst_ip': rem_rel_loc_ip, 'dst_port': None, 'to_ip': None, 'to_port': rem_rel_relay_port,
+                                'chain_type': 'POSTROUTING'}})
+                                                            
+                    # nat task 2.3 normal <- (normal_ext<dnat + rem_rel<snat)relay
 
-                
+                    tasks2.append(
+                            {'node': rem_rel_node, 'task':
+                                {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': rem_rel_relay_port,
+                                'dst_ip': rem_rel_loc_ip, 'dst_port': None, 'to_ip': loc_ext_ip, 'to_port': None,
+                                'chain_type': 'PREROUTING'}})
+                                        
+                    tasks2.append(
+                            {'node': rem_rel_node, 'task':
+                                {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': rem_rel_relay_port,
+                                'dst_ip': loc_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': None,
+                                'chain_type': 'POSTROUTING'}})
+                                
 
                     # chain_3:  normal:4789 -> behind relay
                     # normal_socket:4789 > [snat>normal:relay_port + dnat>relay] -> relay > dnat(+snat>normal_local>) -> relayed
@@ -507,17 +542,41 @@ class NetworkManager:
                     # chain_4:  normal:4789 <- behind relay 
                     # normal_socket:4789 < [relayed<snat normal:4789<dnat]< normal:relay_port <- [relay<snat_on_post (+normal_pub:relay_port<dnat_output)]< relayed
                     # left node always is `self`, right node always is `remote_node`, dnat and snat is need be created nat task
+                    
+                    # 不经过relay_node，直接从remote_node nat仿冒 relay_node
                     # nat task 4.1 normal:relay_port <- [relay<snat_on_post (+normal_pub:relay_port<dnat_output)]< relayed
+                    # tasks4.append(
+                    #     {'node': remote_node, 'task':
+                    #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
+                    #         'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_ext_ip, 'to_port': rem_rel_relay_port,
+                    #         'chain_type': 'OUTPUT'}})
+                    # tasks4.append(
+                    #     {'node': remote_node, 'task':
+                    #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': None,
+                    #         'dst_ip': loc_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_rel_loc_ip, 'to_port': None,
+                    #         'chain_type': 'POSTROUTING'}})
+                    
+                    # 经过relay_node,从remote_node nat到relay再nat到normal 
+                    # nat task 4.1 normal:relay_port <- [relay<snat_post +normal_pub<dnat_pre)] < relay:relay_port<- dnat_output< relayed
+                    
                     tasks4.append(
                         {'node': remote_node, 'task':
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
-                            'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_ext_ip, 'to_port': rem_rel_relay_port,
+                            'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_rel_loc_ip, 'to_port': rem_rel_relay_port,
                             'chain_type': 'OUTPUT'}})
+                    
                     tasks4.append(
-                        {'node': remote_node, 'task':
+                        {'node': rem_rel_node, 'task':
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
+                            'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': loc_ext_ip, 'to_port': None,
+                            'chain_type': 'PREROUTING'}})
+                                        
+                    tasks4.append(
+                        {'node': rem_rel_node, 'task':
                             {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': None,
                             'dst_ip': loc_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_rel_loc_ip, 'to_port': None,
                             'chain_type': 'POSTROUTING'}})
+                    
                                    
                     # nat task 4.2 normal_socket:4789 < [relayed<snat normal:4789<dnat]< normal:relay_port
                     tasks4.append(
@@ -540,13 +599,13 @@ class NetworkManager:
                     # 将nat任务加入到chain_tasks中 
 
                     self.chain_tasks=pd.concat([self.chain_tasks, df([
-                        {'chain': f'{local_node.hostname}:RANDOM -> {remote_node.hostname}:4789', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks1)},
-                        {'chain': f'{remote_node.hostname}:4789 -> {local_node.hostname}:RANDOM', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks2)},
-                        {'chain': f'{local_node.hostname}:4789 -> {remote_node.hostname}:RANDOM', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks3)},
-                        {'chain': f'{remote_node.hostname}:RANDOM -> {local_node.hostname}:4789', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks4)}
+                        {'chain': f'{local_node.hostname}:RANDOM -> {remote_node.hostname}:{self.ingress_port}', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks1)},
+                        {'chain': f'{remote_node.hostname}:{self.ingress_port} -> {local_node.hostname}:RANDOM', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks2)},
+                        {'chain': f'{local_node.hostname}:{self.ingress_port} -> {remote_node.hostname}:RANDOM', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks3)},
+                        {'chain': f'{remote_node.hostname}:RANDOM -> {local_node.hostname}:{self.ingress_port}', 'chain_type': 'SINGLE_RELAY', 'tasks': df(tasks4)}
                     ])], ignore_index=True)
                     for tsks in self.chain_tasks.itertuples():
-                        if tsks.chain =="DESKTOP-SKPL5RD:4789 -> pack01:RANDOM":
+                        if tsks.chain ==f"DESKTOP-SKPL5RD:{self.ingress_port} -> pack01:RANDOM":
                         #if tsks.chain =="DESKTOP-SKPL5RD:RANDOM -> pack01:4789":
                             tt= tsks.tasks.task if len(tsks.tasks)>0 else None
                             return tt
@@ -575,21 +634,159 @@ class NetworkManager:
 
             # 生成所有通讯链路的所有nat任务
             tasks1,tasks2,tasks3,tasks4 = [],[],[],[]
-            if not self.is_same_area_network(local_node, remote_node):           
+            if not self.is_same_area_network(local_node, remote_node): 
+                '''
+                #  方法1 不经过relay_node，直接从remote_node/loc_node nat仿冒 relay_node           
+                # # chain_1: relayed1 -> relayed2:4789
+                # # relayed1 >dnat-> relay2:relay_port > dnat_prerouting> -> relayed2:4789
+                # # left node always is `self`, right node always is `remote_node`, dnat and snat is need be created nat task 
+                # # nat task 1.1 relayed1 >dnat -> relay2:relay_port
+                # tasks1.append(
+                #     {'node': local_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': None,
+                #         'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_rel_ext_ip, 'to_port': rem_rel_relay_port,
+                #         'chain_type': 'OUTPUT'}})
+
+                # tasks1.append(
+                #     {'node': local_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': None,
+                #         'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_ext_ip, 'to_port': None,
+                #         'chain_type': 'POSTROUTING'}})
+                
+                # # nat task 1.2 dnat > relayed:4789
+                # tasks1.append(
+                #     {'node': rem_rel_node, 'task':
+                #         {'task_type':'mark', 'mark':rem_rel_relay_port, 'nat_mode': None, 'src_ip': loc_rel_ext_ip, 'src_port': None,
+                #         'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': None, 'to_port': None,
+                #         'chain_type': 'PREROUTING'}})
+                
+                # tasks1.append(
+                #     {'node': rem_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': loc_rel_ext_ip, 'src_port': None,
+                #         'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
+                #         'chain_type': 'PREROUTING'}})
+        
+                # tasks1.append(
+                #     {'node': rem_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': loc_rel_ext_ip, 'src_port': None,
+                #         'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_loc_ip, 'to_port': None,
+                #         'chain_type': 'POSTROUTING'}})
+        
+                # # chain_2: relayed1 <- relayed2:4789 
+                # # relayed1 <- [relayed1<dnat_prerouting + relayed2:4789<snat_prerouting] < relay1 <- [ relay1<dnat + relay2:relay_port<snat_output] < relayed2_socket:4789 
+                # # left node always is `remote_node`, right node always is `self`, dnat and snat is need be created nat task 
+                # # nat task 2.1 relay1 <- [ relay1<dnat + relay2:relay_port<snat_output] < relayed2:4789
+                # tasks2.append(
+                #     {'node': remote_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                #         'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_rel_ext_ip, 'to_port': None,
+                #         'chain_type': 'OUTPUT'}})
+
+                # tasks2.append(
+                #     {'node': remote_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                #         'dst_ip': loc_rel_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': loc_rel_relay_port,
+                #         'chain_type': 'POSTROUTING'}})
+
+                # # nat task 2.2 relayed1 <- [relayed1<dnat_prerouting + relayed2:4789<snat_prerouting] < relay1
+                # tasks2.append(
+                #     {'node': loc_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_rel_ext_ip, 'src_port': loc_rel_relay_port,
+                #         'dst_ip': loc_rel_ext_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': None,
+                #         'chain_type': 'PREROUTING'}})
+
+                # tasks2.append(
+                #     {'node': loc_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_rel_ext_ip, 'src_port': loc_rel_relay_port,
+                #         'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': self.ingress_port,
+                #         'chain_type': 'POSTROUTING'}})
+
+                # # chain_3: relayed1:4789 -> relayed2
+                # # relayed1_socket:4789 > [snat_output>relay1:relay_port + dnat_output>relay2] -> relay2 > [snat_prerouting>relayed1:4789 + dnat_prerouting>relayed2] -> relayed2
+                # # left node always is `self`, right node always is `remote_node`, dnat and snat is need be created nat tasks
+                # # nat task 3.1 [snat_output>relay1:relay_port + dnat_output>relay2] -> relay2
+                # tasks3.append(
+                #     {'node': local_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
+                #         'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': rem_rel_ext_ip, 'to_port': None,
+                #         'chain_type': 'OUTPUT'}})
+
+                # tasks3.append(
+                #     {'node': local_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
+                #         'dst_ip': rem_rel_ext_ip, 'dst_port': None, 'to_ip': loc_rel_loc_ip, 'to_port': loc_rel_relay_port,
+                #         'chain_type': 'POSTROUTING'}})
+
+                # # nat task 3.2 relay2 > [snat_prerouting>relayed1:4789 + dnat_prerouting>relayed2] -> relayed2
+                # tasks3.append(
+                #     {'node': rem_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_rel_ext_ip, 'src_port': loc_rel_relay_port,
+                #         'dst_ip': rem_rel_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': None,
+                #         'chain_type': 'PREROUTING'}})
+
+                # tasks3.append(
+                #     {'node': rem_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_rel_ext_ip, 'src_port': loc_rel_relay_port,
+                #         'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': self.ingress_port,
+                #         'chain_type': 'POSTROUTING'}})
+
+                # # chain_4: relayed1:4789 <- relayed2 
+                # # relayed1:4789 <- relay1:4789<dnat_output < relay1:relay_port <- [relayed1:relay_port<dnat_output < relayed2
+                # # left node always is `remote_node`, right node always is `self`, dnat and snat is need be created nat task 
+                # # nat task 4.1 relay1:relay_port <- [relayed1:relay_port<dnat_output < relayed2
+                # tasks4.append(
+                #     {'node': remote_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
+                #         'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_ext_ip, 'to_port': rem_rel_relay_port,
+                #         'chain_type': 'INPUT'}})
+
+                # tasks4.append(
+                #     {'node': remote_node, 'task':
+                #         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': None,
+                #         'dst_ip': loc_rel_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_rel_ext_ip, 'to_port': None,
+                #         'chain_type': 'POSTROUTING'}})
+
+                # # nat task 4.2 relayed1:4789 <- relay1:4789<dnat_output < relay1:relay_port
+                # tasks4.append(
+                #     {'node': loc_rel_node, 'task':
+                #         {'task_type':'mark', 'mark':rem_rel_relay_port, 'nat_mode': None, 'src_ip': rem_rel_ext_ip, 'src_port': None,
+                #         'dst_ip': loc_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': None, 'to_port': None,
+                #         'chain_type': 'OUTPUT'}})     
+                         
+                # tasks4.append(
+                #     {'node': loc_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': rem_rel_ext_ip, 'src_port': None,
+                #         'dst_ip': loc_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': loc_loc_ip, 'to_port': self.ingress_port,
+                #         'chain_type': 'OUTPUT'}})
+
+                # tasks4.append(
+                #     {'node': loc_rel_node, 'task':
+                #         {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': rem_rel_ext_ip, 'src_port': None,
+                #         'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_loc_ip, 'to_port': None,
+                #         'chain_type': 'POSTROUTING'}})
+                '''
+                
+                # 方法2：经过relay_node, 从remote_node/local_node nat到relay1再nat到relay2    
                 # chain_1: relayed1 -> relayed2:4789
-                # relayed1 >dnat-> relay2:relay_port > dnat_prerouting> -> relayed2:4789
+                # relayed1 >dnat -> relay1:relay_port>dnat>relay2>snat>relay1 -> relay2:relay_port > dnat_prerouting> -> relayed2:4789
                 # left node always is `self`, right node always is `remote_node`, dnat and snat is need be created nat task 
-                # nat task 1.1 relayed1 >dnat -> relay2:relay_port
+                # nat task 1.1 relayed1 >dnat -> relay1:relay_port>dnat>relay2>snat>relay1 -> relay2:relay_port
                 tasks1.append(
                     {'node': local_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': None,
-                        'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_rel_ext_ip, 'to_port': rem_rel_relay_port,
+                        'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_loc_ip, 'to_port': rem_rel_relay_port,
                         'chain_type': 'OUTPUT'}})
+                
+                tasks1.append(
+                    {'node': loc_rel_node, 'task':
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': None,
+                        'dst_ip': loc_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_rel_ext_ip, 'to_port': None,
+                        'chain_type': 'PREROUTING'}})
 
                 tasks1.append(
-                    {'node': local_node, 'task':
+                    {'node': loc_rel_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': None,
-                        'dst_ip': rem_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_loc_ip, 'to_port': None,
+                        'dst_ip': rem_rel_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': loc_rel_ext_ip, 'to_port': None,
                         'chain_type': 'POSTROUTING'}})
                 
                 # nat task 1.2 dnat > relayed:4789
@@ -614,18 +811,39 @@ class NetworkManager:
                 # chain_2: relayed1 <- relayed2:4789 
                 # relayed1 <- [relayed1<dnat_prerouting + relayed2:4789<snat_prerouting] < relay1 <- [ relay1<dnat + relay2:relay_port<snat_output] < relayed2_socket:4789 
                 # left node always is `remote_node`, right node always is `self`, dnat and snat is need be created nat task 
-                # nat task 2.1 relay1 <- [ relay1<dnat + relay2:relay_port<snat_output] < relayed2:4789
+                # nat task 2.1.1 relay2 < (rel_loc2:rel_port<snat_post + rel_loc2<dnat_output) < relayed2:4789
                 tasks2.append(
                     {'node': remote_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
-                        'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': loc_rel_ext_ip, 'to_port': None,
+                        {'task_type':'mark', 'mark':rem_rel_relay_port, 'nat_mode': None, 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                        'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': None, 'to_port': None,
                         'chain_type': 'OUTPUT'}})
+                
+                tasks2.append(
+                        {'node': remote_node, 'task':
+                            {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                            'dst_ip': loc_loc_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': None,
+                            'chain_type': 'OUTPUT'}})
 
                 tasks2.append(
-                    {'node': remote_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
-                        'dst_ip': loc_rel_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': loc_rel_relay_port,
-                        'chain_type': 'POSTROUTING'}})
+                        {'node': remote_node, 'task':
+                            {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': self.ingress_port,
+                            'dst_ip': rem_rel_loc_ip, 'dst_port': None, 'to_ip': None, 'to_port': rem_rel_relay_port,
+                            'chain_type': 'POSTROUTING'}})
+                                                        
+                # nat task 2.1.2 relay1 <- (relay1_ext<dnat + relay2<snat)relay2
+
+                tasks2.append(
+                        {'node': rem_rel_node, 'task':
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': rem_rel_relay_port,
+                            'dst_ip': rem_rel_loc_ip, 'dst_port': None, 'to_ip': loc_rel_ext_ip, 'to_port': None,
+                            'chain_type': 'PREROUTING'}})
+                                    
+                tasks2.append(
+                        {'node': rem_rel_node, 'task':
+                            {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': rem_rel_relay_port,
+                            'dst_ip': loc_rel_ext_ip, 'dst_port': None, 'to_ip': rem_rel_loc_ip, 'to_port': None,
+                            'chain_type': 'POSTROUTING'}})
+                      
 
                 # nat task 2.2 relayed1 <- [relayed1<dnat_prerouting + relayed2:4789<snat_prerouting] < relay1
                 tasks2.append(
@@ -643,48 +861,72 @@ class NetworkManager:
                 # chain_3: relayed1:4789 -> relayed2
                 # relayed1_socket:4789 > [snat_output>relay1:relay_port + dnat_output>relay2] -> relay2 > [snat_prerouting>relayed1:4789 + dnat_prerouting>relayed2] -> relayed2
                 # left node always is `self`, right node always is `remote_node`, dnat and snat is need be created nat tasks
-                # nat task 3.1 [snat_output>relay1:relay_port + dnat_output>relay2] -> relay2
+                # nat task 3.1 relayed1:4789>dnat>relay1>snat>relay1:relay_port -> relay1>dnat>relay2>snat>relay1 -> relay2
+                
                 tasks3.append(
                     {'node': local_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
-                        'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': rem_rel_ext_ip, 'to_port': None,
+                        {'task_type':'mark', 'mark':rem_rel_relay_port, 'nat_mode': None, 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
+                        'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': None, 'to_port': None,
                         'chain_type': 'OUTPUT'}})
+                tasks3.append(
+                    {'node': local_node, 'task':
+                        {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
+                        'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_rel_loc_ip, 'to_port': None,
+                        'chain_type': 'OUTPUT'}})
+                tasks3.append(
+                    {'node': local_node, 'task':
+                        {'task_type':'nat', 'mark':rem_rel_relay_port, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
+                        'dst_ip': loc_rel_loc_ip, 'dst_port': None, 'to_ip': None, 'to_port': rem_rel_relay_port,
+                        'chain_type': 'POSTROUTING'}})       
+                         
+                tasks3.append(
+                    {'node': loc_rel_node, 'task':
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_loc_ip, 'src_port': rem_rel_relay_port,
+                        'dst_ip': loc_rel_loc_ip, 'dst_port': None, 'to_ip': rem_rel_ext_ip, 'to_port': None,
+                        'chain_type': 'PREROUTING'}})
 
                 tasks3.append(
-                    {'node': local_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': self.ingress_port,
-                        'dst_ip': rem_rel_ext_ip, 'dst_port': None, 'to_ip': loc_rel_loc_ip, 'to_port': loc_rel_relay_port,
+                    {'node': loc_rel_node, 'task':
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_loc_ip, 'src_port': rem_rel_relay_port,
+                        'dst_ip': rem_rel_ext_ip, 'dst_port': None, 'to_ip': loc_rel_ext_ip, 'to_port': None,
                         'chain_type': 'POSTROUTING'}})
+                
 
                 # nat task 3.2 relay2 > [snat_prerouting>relayed1:4789 + dnat_prerouting>relayed2] -> relayed2
                 tasks3.append(
                     {'node': rem_rel_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_rel_ext_ip, 'src_port': loc_rel_relay_port,
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': loc_rel_ext_ip, 'src_port': rem_rel_relay_port,
                         'dst_ip': rem_rel_loc_ip, 'dst_port': None, 'to_ip': rem_loc_ip, 'to_port': None,
                         'chain_type': 'PREROUTING'}})
 
                 tasks3.append(
                     {'node': rem_rel_node, 'task':
-                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_rel_ext_ip, 'src_port': loc_rel_relay_port,
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': loc_rel_ext_ip, 'src_port': rem_rel_relay_port,
                         'dst_ip': rem_loc_ip, 'dst_port': None, 'to_ip': loc_loc_ip, 'to_port': self.ingress_port,
                         'chain_type': 'POSTROUTING'}})
 
                 # chain_4: relayed1:4789 <- relayed2 
                 # relayed1:4789 <- relay1:4789<dnat_output < relay1:relay_port <- [relayed1:relay_port<dnat_output < relayed2
                 # left node always is `remote_node`, right node always is `self`, dnat and snat is need be created nat task 
-                # nat task 4.1 relay1:relay_port <- [relayed1:relay_port<dnat_output < relayed2
+                # nat task 4.1 relay1:relay_port <- relay2<snat<relay1<dnat<relay2:relay_port <-dnat <relayed2
                 tasks4.append(
                     {'node': remote_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
-                        'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': loc_rel_ext_ip, 'to_port': rem_rel_relay_port,
-                        'chain_type': 'INPUT'}})
-
+                        'dst_ip': loc_loc_ip, 'dst_port': self.ingress_port, 'to_ip': rem_rel_loc_ip, 'to_port': rem_rel_relay_port,
+                        'chain_type': 'OUTPUT'}})
+                
                 tasks4.append(
-                    {'node': remote_node, 'task':
+                    {'node': rem_rel_node, 'task':
+                        {'task_type':'nat', 'mark':None, 'nat_mode': 'dnat', 'src_ip': rem_loc_ip, 'src_port': None,
+                        'dst_ip': rem_rel_loc_ip, 'dst_port': rem_rel_relay_port, 'to_ip': loc_rel_ext_ip, 'to_port': None,
+                        'chain_type': 'PREROUTING'}})
+                
+                tasks4.append(
+                    {'node': rem_rel_node, 'task':
                         {'task_type':'nat', 'mark':None, 'nat_mode': 'snat', 'src_ip': rem_loc_ip, 'src_port': None,
                         'dst_ip': loc_rel_ext_ip, 'dst_port': rem_rel_relay_port, 'to_ip': rem_rel_ext_ip, 'to_port': None,
                         'chain_type': 'POSTROUTING'}})
-
+     
                 # nat task 4.2 relayed1:4789 <- relay1:4789<dnat_output < relay1:relay_port
                 tasks4.append(
                     {'node': loc_rel_node, 'task':
@@ -706,10 +948,10 @@ class NetworkManager:
                 
             # 将nat任务加入到chain_tasks中         
             self.chain_tasks=pd.concat([self.chain_tasks, df([
-                {'chain': f'{local_node.hostname}:RANDOM -> {remote_node.hostname}:4789', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks1)},
-                {'chain': f'{remote_node.hostname}:4789 -> {local_node.hostname}:RANDOM', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks2)},
-                {'chain': f'{local_node.hostname}:4789 -> {remote_node.hostname}:RANDOM', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks3)},
-                {'chain': f'{remote_node.hostname}:RANDOM -> {local_node.hostname}:4789', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks4)}
+                {'chain': f'{local_node.hostname}:RANDOM -> {remote_node.hostname}:{self.ingress_port}', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks1)},
+                {'chain': f'{remote_node.hostname}:{self.ingress_port} -> {local_node.hostname}:RANDOM', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks2)},
+                {'chain': f'{local_node.hostname}:{self.ingress_port} -> {remote_node.hostname}:RANDOM', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks3)},
+                {'chain': f'{remote_node.hostname}:RANDOM -> {local_node.hostname}:{self.ingress_port}', 'chain_type': 'DOUBLE_RELAY', 'tasks': df(tasks4)}
             ])], ignore_index=True)
  
 
