@@ -88,10 +88,13 @@ class NatNodesRelays:
 
         # 对relays列表去重
         self.relays = list(set(self.relays))
-
+        self.relays.sort()
+        
         # 对nats列表去重
         self.nats = list(set([frozenset(nat.items()) for nat in self.nats]))
         self.nats = [dict(nat) for nat in self.nats]
+        # 对nats列表进行排序，使得各节点运行时的顺序一致
+        self.nats.sort(key=lambda d: sorted(d.items()))
         self.single_relay_list, self.double_relay_list = self._generate_connection_lists(self.nats, ingress_port)
       
 class NetworkType(Enum):
@@ -178,9 +181,18 @@ class Nodes:
                     return get_relay_port
                 node.get_relay_port = make_get_relay_port(node)
                 #node.relay_port = nat_nodes_relays.get_relay_port_by_nat(node.hostname)
+                node.subnet_node_hostname=set(node.subnet_node_hostname)
                 node.subnet_node_hostname.update([n["nat"] for n in nat_nodes_relays.nats if n["relay"] == node_relay_host]+[node_relay_host])
+                node.subnet_node_hostname = sorted(list(node.subnet_node_hostname))
+                
+                node.subnet_node=set(node.subnet_node)
                 node.subnet_node.update([n for n in self.nodes if n.hostname in node.subnet_node_hostname and n != node])
+                node.subnet_node = sorted(list(node.subnet_node), key=lambda n: n.hostname)
+                
+                node.subnet_node_ip=set(node.subnet_node_ip)
                 node.subnet_node_ip.update([node.local_ip for node in node.subnet_node])
+                node.subnet_node_ip = sorted(list(node.subnet_node_ip))
+        return
 
     def get_local_node(self) -> Node:
         # 获取本机节点
