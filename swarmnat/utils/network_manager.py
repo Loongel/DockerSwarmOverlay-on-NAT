@@ -134,7 +134,7 @@ class NetworkManager:
             iptables_save_output = subprocess.getoutput("iptables-save")
 
             # Split iptables-save output into lines
-            iptables_lines = iptables_save_output.split("\\n")
+            iptables_lines = iptables_save_output.split("\n")
 
             # Placeholder for current table
             current_table = ""
