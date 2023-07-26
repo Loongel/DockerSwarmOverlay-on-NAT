@@ -165,7 +165,6 @@ class NetworkManager:
                 # Run each command
                 subprocess.run("echo "+cmd, shell=True)
                 subprocess.run(cmd, shell=True)
-                subprocess.run("echo docker rules deleted", shell=True)
                 
         if mode == 'nat' or mode is None:
             del_rule_keywords_list = [str(self.ingress_port)[:-1]]
@@ -176,6 +175,7 @@ class NetworkManager:
 
         commands_to_execute = iptables_del_rule_gen(del_rule_keywords_list)
 
+        print("deleting rules: mode=", mode,"\n")
         python_run_bash_cmd(commands_to_execute)
 
         

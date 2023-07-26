@@ -20,7 +20,6 @@ def main(cmd=None):
     network_manager = NetworkManager(nodes, conf.ingress_port)
 
     if cmd is None or cmd =='nat':
-        
         # 根据通讯链路查找本机节点的nat任务，并执行
         network_manager.handle_on_chains()
     elif cmd =='clear':
