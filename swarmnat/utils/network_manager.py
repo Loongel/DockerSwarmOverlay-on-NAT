@@ -119,11 +119,67 @@ class NetworkManager:
             echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections &&\
             echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections &&\
             DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent &&\
-            iptables-save > /etc/iptables/rules.v4 && systemctl restart netfilter-persistent")
+            systemctl stop docker &&\
+            iptables-save > /etc/iptables/rules.v4 && systemctl restart netfilter-persistent &&\
+            systemctl start docker")
 
         # enable ip forwarding
         NetworkManager.command_executor('echo "net.ipv4.ip_forward=1" | tee /etc/sysctl.d/99-ip_forward.conf && sysctl -p')
+
+   
+    def clear_swarmnat_iptables_rules(self, mode=None):
         
+        def iptables_del_rule_gen(del_rule_keywords_list):
+            # Run iptables-save command and get the output
+            iptables_save_output = subprocess.getoutput("iptables-save")
+
+            # Split iptables-save output into lines
+            iptables_lines = iptables_save_output.split("\\n")
+
+            # Placeholder for current table
+            current_table = ""
+
+            # Placeholder for commands to be executed
+            commands = []
+
+            # Iterate over each line in iptables-save output
+            for line in iptables_lines:
+                # If line starts with "*", it's a table name
+                if line.startswith("*"):
+                    current_table = line[1:]
+                elif line.startswith(":"):  # If line starts with ":", it's a chain name
+                    pass
+                # If line contains any of Docker-related elements, prepare "delete" command
+                elif any(element in line for element in del_rule_keywords_list):
+                    # Replace "-A" with "-D" in the line
+                    line = line.replace("-A", "-D", 1)
+                    # Prepare command
+                    command = f'sudo iptables -t {current_table} {line}'
+                    commands.append(command)
+
+            return commands
+
+
+        def python_run_bash_cmd(cmd_list):
+            for cmd in cmd_list:
+                # Run each command
+                subprocess.run("echo "+cmd, shell=True)
+                subprocess.run(cmd, shell=True)
+                subprocess.run("echo docker rules deleted", shell=True)
+                
+        if mode == 'nat' or mode is None:
+            del_rule_keywords_list = [str(self.ingress_port)[:-1]]
+        elif mode == 'all':
+            del_rule_keywords_list = ["DOCKER", "DOCKER-USER", "DOCKER-INGRESS",
+                                    "DOCKER-ISOLATION-STAGE-1", "DOCKER-ISOLATION-STAGE-2",
+                                    "docker0", "docker_gwbridge", "172.17.", "172.18.", "172.19.",str(self.ingress_port)[:-1],"794"]
+
+        commands_to_execute = iptables_del_rule_gen(del_rule_keywords_list)
+
+        python_run_bash_cmd(commands_to_execute)
+
+        
+                
     @staticmethod
     def backup_iptables_rules():
         # Check if backup file already exists
@@ -230,6 +286,7 @@ class NetworkManager:
             #chain_tasks = chain_tasks.iloc[::-1]
             
             tasks =[]
+            
               
             if debug:  
                 for chain in chain_tasks.itertuples():
@@ -248,6 +305,7 @@ class NetworkManager:
             
             # tasks = adjust_nat_tasks_priority(tasks,debug=True)     
             backup_iptables()
+            self.clear_swarmnat_iptables_rules(mode='nat')
             [execute_task(task) for task in tasks]
             save_nat_tasks()
             return
